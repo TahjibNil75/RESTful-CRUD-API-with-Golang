@@ -1,4 +1,4 @@
-package controller
+package sessions
 
 import (
 	"tahjib75/restful-crud-api/models"
@@ -22,4 +22,17 @@ func ValidateAdminModel(adminModelValidator AdminModelValidator) error {
 	validate := validator.New()
 	return validate.Struct(adminModelValidator)
 
+}
+
+type LogInValidator struct {
+	Admin struct {
+		Email    string `json:"email" binding:"required,email"`
+		Password string `json:"password" binding:"required,min=8,max=255"`
+	} `json:"admin" validate:"required"`
+	adminModel models.Admin `json:"-"`
+}
+
+func ValidateAdminLogInModel(logInValidator LogInValidator) error {
+	validate := validator.New()
+	return validate.Struct(logInValidator)
 }

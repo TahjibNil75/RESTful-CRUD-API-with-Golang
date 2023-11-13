@@ -19,7 +19,7 @@ func AdminAuth() gin.HandlerFunc {
 			return
 		}
 		// Use the original err variable for ValidateToken
-		err = utils.ValidateToken(tokenString)
+		_, err = utils.ValidateToken(tokenString)
 		if err != nil {
 			ctx.JSON(http.StatusBadRequest, gin.H{
 				"error": "Invalid access token",

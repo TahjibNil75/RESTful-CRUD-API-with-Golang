@@ -1,4 +1,4 @@
-package controller
+package sessions
 
 import (
 	"errors"
@@ -22,4 +22,10 @@ func (r Repository) saveAdmin(admin *models.Admin) error {
 	// The admin does not exist, so we can save the new admin
 	err := r.DB.Create(admin).Error
 	return err
+}
+
+func (r Repository) FindOne(condition interface{}) (models.Admin, error) {
+	var adminModel models.Admin
+	err := r.DB.Where(condition).First(&adminModel).Error
+	return adminModel, err
 }

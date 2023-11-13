@@ -2,80 +2,116 @@ package utils
 
 import (
 	"errors"
+	"log"
 	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt"
 )
 
-var AccessKey = []byte("superSecretKey")
-var RefreshKey = []byte("refreshSecretKey")
+var JwtToken = []byte("JWT_SECRET")
 
-type JWTClaim struct {
+type JwtClaim struct {
 	Email string `json:"email"`
 	Uid   uint   `json:"uid"`
 	jwt.StandardClaims
 }
 
-func CreateAccessToken(email string, uid uint) (accessToken string, err error) {
-	// Set expiration time for the refresh token (e.g., 6 hours)
-	expirationTime := time.Now().Add(6 * time.Hour)
-	claims := &JWTClaim{
+func CreateAccessToken(email string, uid uint) (accessToken string, refreshToken string, err error) {
+
+	accessTokenExpirationTime := time.Now().Add(6 * time.Hour)
+	refreshTokenExpirationTime := time.Now().Add(168 * time.Hour)
+
+	claims := &JwtClaim{
 		Email: email,
 		Uid:   uid,
 		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expirationTime.Unix(),
+			ExpiresAt: accessTokenExpirationTime.Unix(),
 		},
 	}
-	// Create a new JWT token with the specified claims and signing method (ES256).
-	token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
-	// Sign the token using the AccessKey and get the token string.
-	accessToken, err = token.SignedString(AccessKey)
-	return
-}
 
-func CreateRefreshToken(uid uint) (refreshAccesstoken string, err error) {
-	// Set expiration time for the refresh token (e.g., 30 days)
-	expirationTime := time.Now().Add(30 * 24 * time.Hour)
-	claims := &JWTClaim{
-		Uid: uid,
+	refreshClaims := &JwtClaim{
+		Email: email,
+		Uid:   uid,
 		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expirationTime.Unix(),
+			ExpiresAt: refreshTokenExpirationTime.Unix(),
 		},
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
-	refreshAccesstoken, err = token.SignedString(RefreshKey)
-	return
+
+	// Create a new JWT token with the specified claims and signing method (HS256)
+	accessToken, err = jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(JwtToken))
+	if err != nil {
+		log.Panic(err)
+		return "", "", err
+	}
+
+	refreshToken, err = jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims).SignedString([]byte(JwtToken))
+	if err != nil {
+		log.Panic(err)
+		//return "", err 			// not enough return values; have (string, error);want (string, string, error)
+		return "", "", err
+	}
+
+	return accessToken, refreshToken, nil
+}
+
+func UpdateAllTokens(accessToken string, refreshToken bool) (string, error) {
+	// Initialize a claims struct to store token information
+	claims := &JwtClaim{}
+
+	// Parse the existing token without verifying the signature
+	_, _, err := new(jwt.Parser).ParseUnverified(accessToken, claims)
+	if err != nil {
+		return "", err
+	}
+
+	// Determine the expiration time based on whether it's a refresh token or not
+	var expirationTime time.Duration
+
+	if refreshToken {
+		expirationTime = time.Hour * 168
+	} else {
+		expirationTime = time.Hour * 24
+	}
+
+	claims.ExpiresAt = time.Now().Local().Add(expirationTime).Unix()
+
+	// Create a new token with the updated expiration time
+	newAccessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signedAcessToken, err := newAccessToken.SignedString([]byte(JwtToken))
+	if err != nil {
+		return "", err
+	}
+	return signedAcessToken, nil
 
 }
 
-var Id string
 var Email string
 
-// ValidateToken function for validating a JWT
-func ValidateToken(signedToken string) (err error) {
+func ValidateToken(signedToken string) (UserId string, err error) {
 	// Parse JWT with claims
-	token, err := jwt.ParseWithClaims(
+	token, parseErr := jwt.ParseWithClaims(
 		signedToken,
-		&JWTClaim{},
+		&JwtClaim{},
 		func(token *jwt.Token) (interface{}, error) {
-			return []byte(AccessKey), nil
+			return []byte(JwtToken), nil
 		},
 	)
-	if err != nil {
+	if parseErr != nil {
+		err = parseErr
 		return
 	}
 	// Set email and ID values from JWT claims
-	claims, ok := token.Claims.(*JWTClaim)
-	Id = strconv.Itoa(int(claims.Uid))
+	claims, ok := token.Claims.(*JwtClaim)
+	UserId = strconv.Itoa(int(claims.Uid))
 	Email = claims.Email
 	if !ok {
-		err = errors.New("couldn't parse claims")
+		err = errors.New("failed to parse JWT claims")
 		return
 	}
 	if claims.ExpiresAt < time.Now().Local().Unix() {
 		err = errors.New("token expired")
 		return
 	}
-	return
+	return UserId, nil
 }
